@@ -1,0 +1,35 @@
+# Binaries
+lazys3-tui
+lazys3
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Logs
+*.log
+
+# Test output
+*.test
+*.out
+coverage.html
+coverage.txt
+
+# Go build cache
+/vendor/
+
+# OS artifacts
+.DS_Store
+Thumbs.db
+
+# Editor artifacts
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Environment files
+.env
+.env.*
