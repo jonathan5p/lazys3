@@ -1,6 +1,4 @@
 # Binaries
-lazys3-tui
-lazys3
 *.exe
 *.exe~
 *.dll

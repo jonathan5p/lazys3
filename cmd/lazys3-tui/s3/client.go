@@ -65,6 +65,7 @@ func (o Object) Format() string {
 
 func (c *Client) ListObjects(ctx context.Context, bucket, prefix string) ([]Object, error) {
 	c.log.Info("S3 ListObjects called bucket=%q prefix=%q", bucket, prefix)
+
 	result, err := c.client.ListObjectsV2(ctx, &s3.ListObjectsV2Input{
 		Bucket:    aws.String(bucket),
 		Prefix:    aws.String(prefix),

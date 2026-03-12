@@ -5,9 +5,10 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/jesseduffield/gocui"
+	"github.com/jonathan5p/lazys3/cmd/lazys3-tui/cache"
 	"github.com/jonathan5p/lazys3/cmd/lazys3-tui/logger"
 	"github.com/jonathan5p/lazys3/cmd/lazys3-tui/s3"
+	"github.com/jroimartin/gocui"
 )
 
 type viewport struct {
@@ -39,36 +40,35 @@ func (vp *viewport) reset() {
 }
 
 func (vp *viewport) visibleSlice(height, total int) (int, int) {
-	end := vp.offset + height
-	if end > total {
-		end = total
-	}
+	end := min(vp.offset+height, total)
 	return vp.offset, end
 }
 
 type App struct {
-	client   *s3.Client
-	log      *logger.Logger
-	gui      *gocui.Gui
-	buckets  []string
-	objects  []s3.Object
-	bucketVP viewport
-	objectVP viewport
-	prefix   string
-	loaded   bool
+	client      *s3.Client
+	log         *logger.Logger
+	gui         *gocui.Gui
+	buckets     []string
+	objects     []s3.Object
+	bucketVP    viewport
+	objectVP    viewport
+	objectCache *cache.Cache[[]s3.Object]
+	prefix      string
+	loaded      bool
 }
 
 func NewApp(client *s3.Client, log *logger.Logger) *App {
 	return &App{
-		client: client,
-		log:    log,
+		client:      client,
+		log:         log,
+		objectCache: cache.NewCache[[]s3.Object](),
 	}
 }
 
 func (a *App) Run(_ context.Context) error {
 	a.log.Info("App starting")
-	g := gocui.NewGui()
-	if err := g.Init(); err != nil {
+	g, err := gocui.NewGui(gocui.OutputNormal)
+	if err != nil {
 		return err
 	}
 	defer g.Close()
@@ -76,8 +76,10 @@ func (a *App) Run(_ context.Context) error {
 
 	g.FgColor = gocui.ColorDefault
 	g.BgColor = gocui.ColorDefault
+	g.SelFgColor = gocui.ColorGreen
+	g.Highlight = true
 
-	g.SetLayout(a.layout)
+	g.SetManagerFunc(a.layout)
 
 	if err := a.keybindings(g); err != nil {
 		return err
@@ -88,6 +90,24 @@ func (a *App) Run(_ context.Context) error {
 		return err
 	}
 	a.log.Info("App exiting normally")
+	return nil
+}
+
+func (a *App) preload(ctx context.Context) error {
+	v, err := a.gui.View("buckets")
+	if err != nil {
+		a.log.Error("preload: failed to get buckets view: %v", err)
+		return err
+	}
+
+	_, vy := v.Size()
+	nBuckets := min(len(a.buckets), vy)
+	a.log.Info("Preloading objects for first %v buckets", nBuckets)
+	for _, bucket := range a.buckets[:nBuckets] {
+		if err := a.loadObjects(ctx, bucket, ""); err != nil {
+			a.log.Error("preload: skipping bucket %q: %v", bucket, err)
+		}
+	}
 	return nil
 }
 
@@ -114,7 +134,7 @@ func (a *App) layout(g *gocui.Gui) error {
 
 	if !a.loaded {
 		a.loaded = true
-		if err := g.SetCurrentView("buckets"); err != nil {
+		if _, err := g.SetCurrentView("buckets"); err != nil {
 			return err
 		}
 		ctx := context.Background()
@@ -122,6 +142,11 @@ func (a *App) layout(g *gocui.Gui) error {
 		if err := a.loadBuckets(ctx); err != nil {
 			a.log.Error("layout: loadBuckets failed: %v", err)
 			fmt.Fprintln(vStatus, "Error:", err)
+			return nil
+		}
+		if err := a.preload(ctx); err != nil {
+			a.log.Error("layout: preload failed: %v", err)
+			fmt.Fprintln(vStatus, "Error during preload:", err)
 			return nil
 		}
 	}
@@ -153,13 +178,30 @@ func (a *App) loadBuckets(ctx context.Context) error {
 	return nil
 }
 
+func cacheKey(bucket, prefix string) string {
+	return bucket + "|" + prefix
+}
+
 func (a *App) loadObjects(ctx context.Context, bucket, prefix string) error {
 	a.log.Info("loadObjects: bucket=%q prefix=%q", bucket, prefix)
+
+	key := cacheKey(bucket, prefix)
+	if objects, ok := a.objectCache.Get(key); ok {
+		a.log.Debug("loadObjects: cache hit key=%q", key)
+		a.objects = objects
+		a.prefix = prefix
+		a.objectVP.reset()
+		return a.render()
+	}
+
 	objects, err := a.client.ListObjects(ctx, bucket, prefix)
 	if err != nil {
 		a.log.Error("loadObjects failed: %v", err)
-		return err
+		a.objects = nil
+		a.objectVP.reset()
+		return a.render()
 	}
+	a.objectCache.Set(key, objects)
 	a.objects = objects
 	a.prefix = prefix
 	a.objectVP.reset()
@@ -336,11 +378,46 @@ func (a *App) download(g *gocui.Gui, v *gocui.View) error {
 }
 
 func (a *App) switchFocus(g *gocui.Gui, v *gocui.View) error {
-	return g.SetCurrentView("objects")
+	_, err := g.SetCurrentView("objects")
+	return err
 }
 
 func (a *App) switchFocusBack(g *gocui.Gui, v *gocui.View) error {
-	return g.SetCurrentView("buckets")
+	_, err := g.SetCurrentView("buckets")
+	return err
+}
+
+type highlightable interface {
+	Name() string
+	setFgColor(gocui.Attribute)
+	getFgColor() gocui.Attribute
+}
+
+type guiView struct {
+	v *gocui.View
+}
+
+func (gv *guiView) Name() string                 { return gv.v.Name() }
+func (gv *guiView) setFgColor(c gocui.Attribute) { gv.v.FgColor = c }
+func (gv *guiView) getFgColor() gocui.Attribute  { return gv.v.FgColor }
+
+func (a *App) highlightView(name string) error {
+	wrapped := make([]highlightable, len(a.gui.Views()))
+	for i, v := range a.gui.Views() {
+		wrapped[i] = &guiView{v}
+	}
+	return applyHighlight(wrapped, name)
+}
+
+func applyHighlight(views []highlightable, name string) error {
+	for _, v := range views {
+		if v.Name() == name {
+			v.setFgColor(gocui.ColorGreen)
+		} else {
+			v.setFgColor(gocui.ColorDefault)
+		}
+	}
+	return nil
 }
 
 func (a *App) quit(g *gocui.Gui, v *gocui.View) error {
