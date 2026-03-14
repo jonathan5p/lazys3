@@ -4,15 +4,11 @@ GOFLAGS   :=
 COVER_OUT := coverage.out
 COVER_HTML := coverage.html
 
-.PHONY: build build-duckdb run test test-verbose test-race cover cover-html fmt vet tidy clean pre-commit help
+.PHONY: build run test test-verbose test-race cover cover-html fmt vet tidy clean pre-commit help
 
 ## build: compile the binary
 build:
 	go build $(GOFLAGS) -o $(BINARY) $(CMD)
-
-## build-duckdb: build with DuckDB support (requires CGO)
-build-duckdb:
-	CGO_ENABLED=1 go build $(GOFLAGS) -o $(BINARY) $(CMD)
 
 ## run: run without building a binary
 run:

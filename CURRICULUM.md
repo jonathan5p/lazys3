@@ -175,9 +175,10 @@ Each milestone introduces specific Go concepts. By the end, the result matches t
 - [ ] Build file type detector using file extension and magic bytes
 - [ ] Introduce Go build tags (`//go:build`) for optional DuckDB/Parquet support
 - [ ] Write tests for each formatter with fixture files
+
 - [ ] **Deliverable:** JSON files render as pretty-printed in the preview pane
 
-**Go concepts introduced:** `encoding/json`, `bytes.HasPrefix` for magic bytes, build tags, `//go:build`
+**Go concepts introduced:** `encoding/json`, magic bytes detection, build tags, `//go:build`
 
 ---
 
@@ -221,7 +222,7 @@ Each milestone introduces specific Go concepts. By the end, the result matches t
 
 ---
 
-## Reference: Current File Structure
+## Reference: Final File Structure
 
 ```
 cmd/lazys3/
