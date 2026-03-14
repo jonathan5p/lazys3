@@ -30,7 +30,7 @@ test-verbose:
 test-race:
 	go test -race ./...
 
-## cover: run tests with coverage and print summary per package
+## cover: run tests with coverage and print per-function and total summary
 cover:
 	go test -coverprofile=$(COVER_OUT) -covermode=atomic ./...
 	@echo ""
