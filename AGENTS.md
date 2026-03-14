@@ -39,6 +39,8 @@ make tidy           # go mod tidy
 make test                                    # run all tests
 make test-verbose                            # go test -v ./...
 make test-race                               # with race detector (recommended for TUI code)
+make cover                                   # tests + per-function coverage summary
+make cover-html                              # generates coverage.html for visual report
 
 # Run a single test by name
 go test ./internal/ui/ -run TestNewAppDefaultMode -v
