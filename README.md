@@ -159,7 +159,7 @@ make cover          # prints per-function breakdown to stdout
 make cover-html     # writes coverage.html — open in your browser for a visual report
 ```
 
-Coverage is also reported on every CI run — check the **Print coverage summary** step in the [Actions tab](https://github.com/jonathan5p/lazys3/actions).
+Coverage is also reported on every CI run — check the **Print coverage summary** step in the [Actions tab](../../actions).
 
 ---
 
