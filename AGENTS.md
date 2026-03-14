@@ -1,46 +1,34 @@
 # Agent Development Guide — lazys3
 
-This is the authoritative reference for all AI agents working in this repository.
-It is Go-project-specific and supersedes any generic global agent instructions.
+Authoritative reference for all AI agents working in this repository.
 
 ---
 
 ## Project Overview
 
-`lazys3` is a terminal UI (TUI) for browsing and downloading AWS S3 objects.
-Stack: Go 1.24, `jesseduffield/gocui` (TUI), `aws-sdk-go-v2` (S3).
+`lazys3` is a terminal UI (TUI) for browsing, filtering, and previewing AWS S3 objects.
+
+**Stack:** Go 1.24, Bubble Tea v2 (`charm.land/bubbletea/v2`), Lipgloss, aws-sdk-go-v2, DuckDB (CGO), parquet-go (pure Go), Cobra.
 
 **Package layout:**
-
 ```
-main.go                            # root stub — not the real entry point
-cmd/lazys3-tui/
-  main.go                          # real entry point: wires logger, S3 client, App
-  logger/logger.go                 # file-backed structured logger (Info/Debug/Error)
-  s3/client.go                     # AWS S3 wrapper (ListBuckets, ListObjects, DownloadObject)
-  ui/app.go                        # gocui TUI: layout, keybindings, render loop
-  IMPROVEMENTS.md                  # backlog of planned TUI enhancements (see below)
+cmd/lazys3/         — cobra entry point; wires S3 client + TUI
+internal/
+  ui/               — Bubble Tea models: AppModel, panes, overlays, keybindings
+  s3/               — S3 Client interface + AWSClient (aws-sdk-go-v2)
+  preview/          — file type detection, JSON/Parquet/DuckDB formatters
 ```
-
-**Improvement backlog:**
-
-`cmd/lazys3-tui/IMPROVEMENTS.md` is the authoritative list of planned enhancements for the TUI.
-Before starting any new feature work, consult this file to understand the intended direction of the
-project and to avoid implementing something that conflicts with a planned improvement. When a backlog
-item is fully implemented, remove or mark it as done in that file.
 
 ---
 
-## Build & Run
-
-There is no Makefile. Use the `go` toolchain directly.
+## Build & Run Commands
 
 ```sh
-# Build
-go build -o lazys3-tui ./cmd/lazys3-tui
-
-# Run without building
-go run ./cmd/lazys3-tui
+make build          # compile binary → ./lazys3
+make build-duckdb   # compile with CGO_ENABLED=1 (required for DuckDB)
+make run            # go run ./cmd/lazys3 (no binary)
+make clean          # remove ./lazys3
+make tidy           # go mod tidy
 ```
 
 ---
@@ -48,20 +36,20 @@ go run ./cmd/lazys3-tui
 ## Test Commands
 
 ```sh
-# Run all tests
-go test ./...
+make test                                    # run all tests
+make test-verbose                            # go test -v ./...
+make test-race                               # with race detector (recommended for TUI code)
 
-# Run all tests with verbose output
-go test -v ./...
+# Run a single test by name
+go test ./internal/ui/ -run TestNewAppDefaultMode -v
 
-# Run tests for a single package
-go test ./cmd/lazys3-tui/s3/
+# Run all tests in one package
+go test ./internal/s3/ -v
+go test ./internal/preview/ -v
+go test ./internal/ui/ -v
 
-# Run a single named test
-go test ./cmd/lazys3-tui/s3/ -run TestListBuckets
-
-# Run with race detector (recommended for concurrent/TUI code)
-go test -race ./...
+# Run tests matching a pattern
+go test ./... -run TestFilter -v
 ```
 
 ---
@@ -69,35 +57,65 @@ go test -race ./...
 ## Lint & Format Commands
 
 ```sh
-# Format all code in place
-gofmt -w .
+make fmt            # gofmt -w . (in-place)
+make vet            # go vet ./...
 
 # Check formatting without rewriting (must produce no output before a commit)
 gofmt -l .
-
-# Static analysis (built-in, no external linter installed)
-go vet ./...
-
-# Tidy dependencies
-go mod tidy
 ```
 
-> No `golangci-lint` or `staticcheck` is installed. Use `go vet` as the linter.
-> If a Makefile is added later, switch to `make <target>` instead of direct commands.
+No `golangci-lint` or `staticcheck` installed. Use `go vet` as the linter.
 
 ---
 
 ## Pre-Commit Checklist (MANDATORY)
 
-Run all three in order and fix every error before committing:
+Run before **every** commit. Zero tolerance — fix all errors first.
 
 ```sh
-gofmt -l .    # must produce no output
-go vet ./...  # must produce no output
-go test ./... # all tests must pass
+make pre-commit     # gofmt check + go vet + go test ./...
 ```
 
-Zero tolerance. Never commit with outstanding errors.
+Order: formatting → vet → tests. If any step fails, fix and re-run from the top.
+
+---
+
+## Bubble Tea v2 API (Critical — differs from v1)
+
+- Module path: `charm.land/bubbletea/v2` (NOT `github.com/charmbracelet/bubbletea`)
+- `Init() tea.Cmd` (no return model)
+- `Update(msg tea.Msg) (tea.Model, tea.Cmd)`
+- `View() tea.View` — use `tea.NewView(string)`, NOT `string`
+- Alt screen: `v.AltScreen = true` on the returned `tea.View` struct
+- Key events: `tea.KeyPressMsg`, `msg.String()` e.g. `"k"`, `"j"`, `"enter"`, `"esc"`
+- Paste events: `tea.PasteMsg{Content string}` — separate from KeyPressMsg
+- `bubbles/list` and `bubbles/viewport` are NOT compatible with v2 — use custom pane models
+
+---
+
+## Application Architecture
+
+### Modal state machine
+
+```go
+type AppMode int  // ModeNormal | ModeFilter | ModeDownload | ModeHelp | ModeMetadata | ModeQuery
+type AppStage int // StageBuckets (buckets+objects peek) | StageObjects (objects+preview)
+```
+
+`Update()` routes key events by mode before falling through to `handleKey`.
+
+### Two-stage layout
+
+- **StageBuckets**: `Buckets (50%) | Objects peek (50%)` — j/k on buckets lazily loads object peek
+- **StageObjects**: `Objects (50%) | Preview (50%)` — entered via Enter/l on a bucket
+
+### Message types (async S3 ops)
+
+`BucketsLoadedMsg`, `ObjectsLoadedMsg`, `PreviewReadyMsg` (carries `RawPath`+`FileKey` for rescale), `MetadataLoadedMsg`, `DownloadDoneMsg`
+
+### Preview temp file lifecycle
+
+`handlePreviewReady` stores `rawPath` on `PreviewPane`. Rescale (`+`/`-`) and query (`:`) re-use the same path. The file is deleted only when a genuinely new preview replaces it (different `RawPath` in the new `PreviewReadyMsg`).
 
 ---
 
@@ -105,67 +123,59 @@ Zero tolerance. Never commit with outstanding errors.
 
 ### Formatting
 
-- All code must pass `gofmt`. Tabs for indentation — never spaces.
+All code must pass `gofmt`. Tabs for indentation — never spaces.
 
 ### Imports
 
-Three groups, separated by blank lines:
+Three groups separated by blank lines:
+
+```go
+import (
+    "context"
+    "fmt"
+
+    tea "charm.land/bubbletea/v2"
+    "github.com/charmbracelet/lipgloss"
+
+    s3pkg "github.com/jonathan5p/lazys3/internal/s3"
+)
+```
 
 1. Standard library
 2. Third-party packages
 3. Internal packages (`github.com/jonathan5p/lazys3/...`)
 
-```go
-import (
-    "context"
-    "io"
-
-    "github.com/aws/aws-sdk-go-v2/aws"
-
-    "github.com/jonathan5p/lazys3/cmd/lazys3-tui/logger"
-)
-```
-
 ### Naming
 
 - Unexported: `camelCase`. Exported: `PascalCase`.
-- Acronyms stay uppercase: `S3`, `TUI`, `HTTP`, `URL`.
-- Receiver names: short, consistent per type (`a` for `*App`, `c` for `*Client`, `l` for `*Logger`).
-- Constructors follow `New<Type>` (`NewApp`, `NewClient`, `New`).
-- Boolean fields use positive framing (`loaded`, `IsDir`), not negations.
+- Acronyms stay uppercase: `S3`, `TUI`, `JSON`, `URL`.
+- Constructors: `New<Type>` (e.g. `NewApp`, `NewAWSClient`).
+- Receiver names: short, consistent per type (`a` for `*AppModel`, `c` for `*Client`).
+- Boolean fields: positive framing (`loading`, `active`), not negations.
 
 ### Types & Receivers
 
-- Use pointer receivers on all methods of a struct if any method mutates state.
-- Prefer concrete structs over interfaces; introduce an interface only when needed for testing or multiple implementations.
+- Use pointer receivers on structs when any method mutates state.
+- Prefer concrete structs over interfaces; introduce an interface only for testing or multiple implementations (e.g. `s3.Client`, `preview.Formatter`).
 - No `interface{}` / `any` unless unavoidable.
+
+### Functions & Methods
+
+- Keep every function under **20 lines**. Flag and refactor anything longer.
+- Sub-models (`BucketPane`, `ObjectPane`, `PreviewPane`, `StatusBar`) follow the pattern:
+  ```go
+  func (p PaneType) Update(msg tea.Msg) (PaneType, tea.Cmd)
+  func (p PaneType) View(active bool) string
+  ```
+- Keybinding handlers return `(tea.Model, tea.Cmd)` — never modify app state in-place.
 
 ### Error Handling
 
 - Always check errors immediately — never discard with `_`.
 - Propagate with `return err` at the lowest level.
-- Add context when wrapping: `fmt.Errorf("loadObjects: %w", err)`.
+- Add context when wrapping: `fmt.Errorf("load aws config: %w", err)`.
 - `log.Fatalf` only in `main()`. All other packages return errors to the caller.
-- The gocui view-init idiom is correct and must be followed exactly:
-
-  ```go
-  if err != nil && err != gocui.ErrUnknownView { return err }
-  ```
-
-### Functions & Methods
-
-- Keep every function under 20 lines. Flag and refactor anything longer.
-- Keybinding handlers must match the gocui signature:
-
-  ```go
-  func(g *gocui.Gui, v *gocui.View) error
-  ```
-
-- Every log call must include function context and key variable values:
-
-  ```go
-  a.log.Info("loadObjects: bucket=%q prefix=%q", bucket, prefix)
-  ```
+- S3/async errors surface via the message types (e.g. `BucketsLoadedMsg{Err: err}`) and are displayed in the status bar via `statusbar.SetError(err)`.
 
 ### Comments
 
@@ -175,28 +185,28 @@ import (
 
 ---
 
-## TUI-Specific Rules (gocui)
+## TDD Rules
 
-- Always check `gocui.ErrUnknownView` on every `g.SetView(...)` call.
-- Never call `g.SetCurrentView` outside of layout or a keybinding handler.
-- The `layout` function is called on every frame — keep it idempotent. Use the `!a.loaded` guard for one-time initialization.
-- Colors are set via `g.FgColor`, `g.BgColor`, and per-view `v.FgColor` / `v.BgColor`. Use `gocui.ColorDefault` to inherit from the user's terminal theme.
+- Write the failing test first; confirm it is RED before implementing.
+- Use only the standard `testing` package — no third-party assertion libraries.
+- Prefer table-driven tests (`[]struct{ ... }`) for multiple input cases.
+- Test case names must be descriptive: `"directory with nested prefix"`, not `"test"`.
+- Mock S3 calls by implementing the `s3.Client` interface with a fake struct in tests.
+- Test mode transitions and state changes — not gocui/Bubble Tea rendering internals.
+- After every code change, run `go test ./...` automatically without asking.
 
 ---
 
-## TDD Rules
+## DuckDB / CGO
 
-- Follow TDD in spirit: tests are part of the development cycle, not an afterthought. Every non-trivial piece of logic must have a test before the feature is considered done.
-- Red-green cycles are not required to be minimal. It is acceptable to write a fuller implementation before returning to green, as long as tests are written as part of the same cycle — not after the fact.
-- Use only the standard `testing` package (no third-party assertion libraries).
-- Prefer table-driven tests (`[]struct{ ... }`) for multiple input cases.
-- Test case names must be descriptive — they appear in failure output (e.g. `"directory with nested prefix"`, not `"test"`).
-- Mock AWS calls by extracting an interface over `*s3.Client` and providing a fake in tests.
-- Do not test `main()` directly; test the packages it wires together.
+- DuckDB requires `CGO_ENABLED=1` and GCC/Clang at build time.
+- Source file: `internal/preview/duckdb.go` — build tag `//go:build cgo`
+- Fallback stub: `internal/preview/duckdb_stub.go` — build tag `//go:build !cgo`
+- Use `make build-duckdb` to compile with DuckDB support.
+- Default `make build` works without explicit CGO flag (CGO on by default when GCC present).
 
 ---
 
 ## Language
 
-- All code, comments, commit messages, test names, and documentation must be in English.
-- Conversation with the developer may be in Spanish or English.
+All code, comments, commit messages, test names, and documentation must be in **English**.
