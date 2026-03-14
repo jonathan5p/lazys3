@@ -96,24 +96,24 @@ lazys3 --endpoint http://localhost:9000  # use custom endpoint (MinIO, LocalStac
 
 ## Keybindings
 
-| Key | Action |
-|-----|--------|
-| `j` / `k` | Move cursor down / up |
-| `h` / `←` | Focus left pane / go back |
-| `l` / `→` / `Enter` | Enter bucket or focus right pane |
-| `Esc` | Go up prefix level / return to bucket list |
-| `/` | Filter mode — type to filter, `Enter` to confirm, `Esc` to cancel |
-| `p` | Preview selected file |
-| `d` | Download selected file (prompts for path) |
-| `m` | Show object metadata |
-| `:` | SQL query mode (DuckDB) — requires preview to be open |
-| `+` / `=` | Widen preview table columns |
-| `-` | Narrow preview table columns |
-| `r` | Refresh current pane |
-| `g` `g` | Jump to top |
-| `G` | Jump to bottom |
-| `?` | Toggle keybinding help overlay |
-| `q` | Quit |
+| Key                 | Action                                                            |
+| ------------------- | ----------------------------------------------------------------- |
+| `j` / `k`           | Move cursor down / up                                             |
+| `h` / `←`           | Focus left pane / go back                                         |
+| `l` / `→` / `Enter` | Enter bucket or focus right pane                                  |
+| `Esc`               | Go up prefix level / return to bucket list                        |
+| `/`                 | Filter mode — type to filter, `Enter` to confirm, `Esc` to cancel |
+| `p`                 | Preview selected file                                             |
+| `d`                 | Download selected file (prompts for path)                         |
+| `m`                 | Show object metadata                                              |
+| `:`                 | SQL query mode (DuckDB) — requires preview to be open             |
+| `+` / `=`           | Widen preview table columns                                       |
+| `-`                 | Narrow preview table columns                                      |
+| `r`                 | Refresh current pane                                              |
+| `g` `g`             | Jump to top                                                       |
+| `G`                 | Jump to bottom                                                    |
+| `?`                 | Toggle keybinding help overlay                                    |
+| `q`                 | Quit                                                              |
 
 ### Filter mode tips
 
@@ -137,7 +137,7 @@ Press `Enter` to execute, `Esc` to cancel. Use `←`/`→` to move the cursor, `
 
 ## Development
 
-See [AGENTS.md](./AGENTS.md) for the full developer guide including build commands, code style, and testing conventions.
+See [AGENTS.md](./AGENTS.md) for the full agent dev guide including build commands, code style, and testing conventions.
 
 ```sh
 make test           # run all tests
