@@ -1,8 +1,10 @@
 BINARY    := lazys3
 CMD       := ./cmd/lazys3
 GOFLAGS   :=
+COVER_OUT := coverage.out
+COVER_HTML := coverage.html
 
-.PHONY: build build-duckdb run test test-verbose test-race fmt vet tidy clean pre-commit help
+.PHONY: build build-duckdb run test test-verbose test-race cover cover-html cover-func fmt vet tidy clean pre-commit help
 
 ## build: compile the binary
 build:
@@ -28,6 +30,18 @@ test-verbose:
 test-race:
 	go test -race ./...
 
+## cover: run tests with coverage and print summary per package
+cover:
+	go test -coverprofile=$(COVER_OUT) -covermode=atomic ./...
+	@echo ""
+	@echo "==> Coverage summary:"
+	go tool cover -func=$(COVER_OUT)
+
+## cover-html: generate HTML coverage report and open it
+cover-html: cover
+	go tool cover -html=$(COVER_OUT) -o $(COVER_HTML)
+	@echo "Coverage report written to $(COVER_HTML)"
+
 ## fmt: format all Go source files in place
 fmt:
 	gofmt -w .
@@ -42,7 +56,7 @@ tidy:
 
 ## clean: remove build artifacts
 clean:
-	rm -f $(BINARY)
+	rm -f $(BINARY) $(COVER_OUT) $(COVER_HTML)
 
 ## pre-commit: fmt check + vet + tests (must all pass before committing)
 pre-commit:

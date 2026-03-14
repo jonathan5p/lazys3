@@ -141,12 +141,28 @@ See [AGENTS.md](./AGENTS.md) for the full agent dev guide including build comman
 
 ```sh
 make test           # run all tests
+make test-race      # run tests with race detector
+make cover          # run tests + print per-function coverage summary
+make cover-html     # generate coverage.html and open in browser
 make pre-commit     # fmt + vet + tests (run before every commit)
 make help           # list all make targets
 ```
 
 ---
 
+## Coverage
+
+Current test coverage: **~60%** (statements across all packages).
+
+```sh
+make cover          # prints per-function breakdown to stdout
+make cover-html     # writes coverage.html — open in your browser for a visual report
+```
+
+Coverage is also reported on every CI run — check the **Print coverage summary** step in the [Actions tab](https://github.com/jonathan5p/lazys3/actions).
+
+---
+
 ## License
 
-MIT
+MIT — see [LICENSE](./LICENSE).
