@@ -152,7 +152,7 @@ make help           # list all make targets
 
 ## Coverage
 
-Current test coverage: **~60%** (statements across all packages).
+Test coverage is measured across all packages; for up-to-date coverage numbers, use the commands below or check the latest CI run.
 
 ```sh
 make cover          # prints per-function breakdown to stdout
