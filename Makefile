@@ -4,7 +4,7 @@ GOFLAGS   :=
 COVER_OUT := coverage.out
 COVER_HTML := coverage.html
 
-.PHONY: build build-duckdb run test test-verbose test-race cover cover-html cover-func fmt vet tidy clean pre-commit help
+.PHONY: build build-duckdb run test test-verbose test-race cover cover-html fmt vet tidy clean pre-commit help
 
 ## build: compile the binary
 build:
